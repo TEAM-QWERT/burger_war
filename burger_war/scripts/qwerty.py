@@ -30,6 +30,8 @@ import actionlib_msgs
 import json
 import math
 import roslib
+import numpy as np
+import requests
 
 #location_listの読み込み
 file_path = roslib.packages.get_pkg_dir('burger_war') + "/location_list/location_list.json"
@@ -39,15 +41,46 @@ location_list_dict = json.load(file)
 class Qwerty():
     def __init__(self, bot_name="NoName",
                  use_lidar=False, use_camera=False, use_imu=False,
-                 use_odom=False, use_joint_states=False, use_rviz=False):
+                 use_odom=False, use_joint_states=False, use_war_state=False):
+        self.judge_url = rospy.get_param('~judge_url', 'http://127.0.0.1:5000')
         self.name = bot_name
+        self.my_field_points = np.zeros(12)
+        self.my_score = 0
+        self.en_field_points = np.zeros(12)
+        self.en_score = 0
+        self.my_col = "n"
+        self.en_col = "n"
+        self.need2get_fields = []
+        #self.direction = [[],[],[],[]]#[S,W,N,E]
+        self.direction = {"S":[],"W":[],"N":[],"E":[]}#[S,W,N,E]
+        self.check_points     = ["S_right", "S_center", "S_left", 
+                                "W_right", "W_center", "W_left", 
+                                "N_right", "N_center", "N_left", 
+                                "E_right", "E_center", "E_left"]
+        self.direction_name = []
 
-
-        self.check_points     = ["south_right", "south_center", "south_left", "west_right", "west_center", "west_left", "north_right", "north_center", "north_left", "east_right", "east_center", "east_left"]
-
+        """
+        周る順番
+        "OctopusWiener_S",
+        "FriedShrimp_S",
+        "Pudding_S",
+        "Pudding_N",
+        "FriedShrimp_W",
+        "Tomato_S",
+        "FriedShrimp_N",
+        "Tomato_N",
+        "Omelette_N",
+        "Omelette_S",
+        "FriedShrimp_E",
+        "OctopusWiener_N"
+        """
         # velocity publisher
         self.vel_pub = rospy.Publisher('cmd_vel', Twist,queue_size=1)
         self.client = actionlib.SimpleActionClient('move_base',MoveBaseAction)
+
+        # war state subscriber
+        if use_war_state:
+            self.war_state_sub = rospy.Subscriber('war_state', String, self.callback_war_state)
 
         # lidar scan subscriber
         if use_lidar:
@@ -74,11 +107,6 @@ class Qwerty():
         if use_joint_states:
             self.odom_sub = rospy.Subscriber('joint_states', JointState, self.jointstateCallback)
 
-        if use_rviz:
-            # for convert image topic to opencv obj
-            self.rviz_img = None
-            self.rviz_bridge = CvBridge()
-            self.rviz_image_sub = rospy.Subscriber('image_raw', Image, self.rvizimageCallback)
     # lidar scan topic call back sample
     # update lidar scan state
     def lidarCallback(self, data):
@@ -122,15 +150,6 @@ class Qwerty():
         rospy.loginfo("joint_state R: {}".format(self.wheel_rot_r))
         rospy.loginfo("joint_state L: {}".format(self.wheel_rot_l))
 
-    def rvizimageCallback(self, data):
-        try:
-            self.rviz_img = self.rviz_bridge.imgmsg_to_cv2(data, "bgr8")
-        except CvBridgeError as e:
-            rospy.logerr(e)
-
-        cv2.imshow("rviz Image window", self.rviz_img)
-        cv2.waitKey(1)
-
     def area(self,img):
         hsv = cv2.cvtColor(img,cv2.COLOR_BGR2HSV)
 
@@ -152,6 +171,90 @@ class Qwerty():
 
         return cv2.contourArea(contours[0])
 
+    def set_players(self,data):
+        if data["players"]["r"] == "you":
+            my_col = "r"
+            en_col = "b"
+        else:
+            my_col = "b"
+            en_col = "r"
+        return my_col, en_col
+
+    def calc_war_state(self, data, my_col, en_col):
+        my_field_points = np.zeros(12) #自分の取得フィールド点
+        en_field_points = np.zeros(12) #相手の取得フィールド点
+        my_score = data["scores"][my_col] #自分の点数
+        en_score = data["scores"][en_col] #相手の点数
+        #direction = [[],[],[],[]]#[S,W,N,E]
+        direction = {"S":[],"W":[],"N":[],"E":[]}
+        CHANGE = {"Tomato_N": "N_center", "Tomato_S": "W_left", "Omelette_N":	"N_left", "Omelette_S": "E_right",
+                "Pudding_N": "W_right", "Pudding_S": "S_left", "OctopusWiener_N": "E_left", "OctopusWiener_S": "S_right",
+                "FriedShrimp_N": "N_right", "FriedShrimp_E": "E_center", "FriedShrimp_W": "W_center", "FriedShrimp_S": "S_center"}
+
+        #フィールド点の計算
+        for i,j in zip(range(6,18),range(0,12)):
+            if data["targets"][i]["player"] == self.my_col:
+                my_field_points[j] = 1
+                en_field_points[j] = 0
+                temp = CHANGE[data["targets"][i]["name"]]
+                if "S" in temp:
+                    #direction[0].append(temp)
+                    direction["S"].append(temp)
+                elif "W" in temp:
+                    #direction[1].append(temp)
+                    direction["W"].append(temp)
+                elif "N" in temp:
+                    #direction[2].append(temp)
+                    direction["N"].append(temp)
+                elif "E" in temp:
+                    #direction[3].append(temp)
+                    direction["E"].append(temp)
+
+            elif data["targets"][i]["player"] == self.en_col:
+                my_field_points[j] = 0
+                en_field_points[j] = 1
+        #rospy.loginfo(temp)
+        #rospy.loginfo(my_field_points)
+        return my_score, en_score, my_field_points, en_field_points, direction
+    
+    def scan_field(self, field_points):
+        result = []
+        """
+        WAR_STATE = ["BL_B","BL_L","BL_R","RE_B","RE_L","RE_R","Tomato_N", "Tomato_S","Omelette_N","Omelette_S",
+                    "Pudding_N","Pudding_S","OctopusWiener_N","OctopusWiener_S",
+                    "FriedShrimp_N","FriedShrimp_E","FriedShrimp_W","FriedShrimp_S"]
+        """
+        WAR_STATE = ["Tomato_N", "Tomato_S","Omelette_N","Omelette_S",
+                    "Pudding_N","Pudding_S","OctopusWiener_N","OctopusWiener_S",
+                    "FriedShrimp_N","FriedShrimp_E","FriedShrimp_W","FriedShrimp_S"]
+        CHANGE = {"Tomato_N": "N_center", "Tomato_S": "W_left", "Omelette_N":	"N_left", "Omelette_S": "E_right",
+                "Pudding_N": "W_right", "Pudding_S": "S_left", "OctopusWiener_N": "E_left", "OctopusWiener_S": "S_right",
+                "FriedShrimp_N": "N_right", "FriedShrimp_E": "E_center", "FriedShrimp_W": "W_center", "FriedShrimp_S": "S_center"}
+
+        for i,j in zip(range(12), field_points):
+            if j == 0:
+                result.append(CHANGE[WAR_STATE[i]])
+        return result
+
+    def callback_war_state(self, data):
+        resp = requests.get(self.judge_url + "/warState")
+        war_state_dic = resp.json()
+        if self.my_col == "n":
+            self.my_col,self.en_col = self.set_players(war_state_dic)
+            #rospy.loginfo(self.my_col)
+        else:
+            self.my_score, self.en_score, self.my_field_points, self.en_field_points, self.direction = self.calc_war_state(war_state_dic,my_col=self.my_col, en_col=self.en_col)
+            self.need2get_fields = self.scan_field(self.my_field_points)
+            self.en_fields = self.scan_field(self.en_field_points)
+            #rospy.loginfo(self.my_field_points)
+            #rospy.loginfo(self.need2get_fields)
+            rospy.loginfo(self.direction)
+            #rospy.loginfo(self.my_field_points)
+            """
+            with open("/home/majima/catkin_ws/src/burger_war/burger_war/scripts/fieldpoint.log", mode="a") as f:
+                f.writelines([str(self.need2get_fields),"/n"])
+            """
+
     def calcTwist(self):
         x = 0
         th = 0
@@ -162,7 +265,6 @@ class Qwerty():
 
     def setGoal(self,location_name):
         self.client.wait_for_server()
-
         goal = MoveBaseGoal()
         goal.target_pose.header.frame_id = "/map"
         goal.target_pose.header.stamp = rospy.Time.now()
@@ -170,11 +272,11 @@ class Qwerty():
         goal.target_pose.pose.position.y = location_list_dict[location_name]["translation"]["y"]
 
         # Euler to Quartanion
-        #q=tf.transformations.quaternion_from_euler(0,0,yaw)        
-        goal.target_pose.pose.orientation.x = location_list_dict[location_name]["rotation"]["x"]
-        goal.target_pose.pose.orientation.y = location_list_dict[location_name]["rotation"]["y"]
-        goal.target_pose.pose.orientation.z = location_list_dict[location_name]["rotation"]["z"]
-        goal.target_pose.pose.orientation.w = location_list_dict[location_name]["rotation"]["w"]
+        q=tf.transformations.quaternion_from_euler(0,0,location_list_dict[location_name]["rotation"]["yaw"] * math.pi / 180.0)
+        goal.target_pose.pose.orientation.x = q[0]
+        goal.target_pose.pose.orientation.y = q[1]
+        goal.target_pose.pose.orientation.z = q[2]
+        goal.target_pose.pose.orientation.w = q[3]
 
         self.client.send_goal(goal)
         wait = self.client.wait_for_result()
@@ -183,6 +285,7 @@ class Qwerty():
             rospy.signal_shutdown("Action server not available!")
         else:
             return self.client.get_result() 
+            
     def strategy(self):
         r = rospy.Rate(5) # change speed 1fps
         
@@ -193,7 +296,7 @@ class Qwerty():
 
 if __name__ == '__main__':
     rospy.init_node('all_sensor_sample')
-    bot = Qwerty(bot_name='qwerty', use_lidar=False, use_camera=True,
-                 use_imu=False, use_odom=False, use_joint_states=False, use_rviz=False)
+    bot = Qwerty(bot_name='qwerty', use_lidar=False, use_camera=False,
+                 use_imu=False, use_odom=False, use_joint_states=False,use_war_state=True)
     bot.strategy()
 
