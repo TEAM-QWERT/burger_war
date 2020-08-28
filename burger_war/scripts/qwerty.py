@@ -280,7 +280,34 @@ class Qwerty():
         twist.linear.x = x; twist.linear.y = 0; twist.linear.z = 0
         twist.angular.x = 0; twist.angular.y = 0; twist.angular.z = th
         return twist
+    def GetFieldPoint(self, my_xy, en_xy):
+        HOUI = ["S", "W", "N", "E"]
+        iranaikedo = {}
+        local_need2getfelds = self.need2get_fields
+        kyori = 0.0
+        en_field = {}
+        my_field = {}
 
+        for i in iruten:
+            kyori = math.sqrt(math.pow(my_xy.x - location_list_dict[i]["translation"]["x"],2) + math.pow(my_xy.y - location_list_dict[i]["translation"]["y"],2))
+            iranaikedo["i"] = kyori
+        for i in HOUI:
+            kyori = math.sqrt(math.pow(en_xy.x - location_list_dict[i+"_center"]["translation"]["x"],2) + math.pow(en_xy.y - location_list_dict[i+"_center"]["translation"]["y"],2))
+            kyori_my = math.sqrt(math.pow(my_xy.x - location_list_dict[i+"_center"]["translation"]["x"],2) + math.pow(my_xy.y - location_list_dict[i+"_center"]["translation"]["y"],2))
+            en_field[i] = kyori
+            my_field[i] = kyori_my
+        ittehaikenai = sorted(en_field.items(), key=lambda x:x[1])[0][0]
+        my_basyo = sorted(my_field.items(), key=lambda x:x[1])[0][0]
+        saitan = sorted(iranaikedo.items(), key=lambda x:x[1])
+        saitan_houi = saitan[0][0].split("_")#NWSEを取得
+        if saitan_houi == HOUI[HOUI.index(houi) - 2]:
+            #最短が自分の領域と逆側
+            if ittehaikenai[0][0] == HOUI[HOUI.index(houi) - 1]:
+                return HOUI[HOUI.index(houi) - 3] + "_center"#SWNEの中心
+            elif ittehaikenai[0][0] == HOUI[HOUI.index(houi) - 3]:
+                return  HOUI[HOUI.index(houi) - 1] + "_center"#SWNEの中心
+        return saitan[0][0]
+    
     def setGoal(self,location_name):
         self.client.wait_for_server()
         goal = MoveBaseGoal()
