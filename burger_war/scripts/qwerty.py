@@ -53,8 +53,7 @@ class Qwerty():
         self.need2get_fields = []
         #self.direction = [[],[],[],[]]#[S,W,N,E]
         self.direction = {"S":[],"W":[],"N":[],"E":[]}#[S,W,N,E]
-        self.check_points     = ["S_right", "S_center", "S_left", 
-                                "W_right", "W_center", "W_left", 
+        self.check_points     = ["W_right", "W_center", "W_left", 
                                 "N_right", "N_center", "N_left", 
                                 "E_right", "E_center", "E_left"]
         self.direction_name = []
@@ -126,6 +125,7 @@ class Qwerty():
             print(self.S)
         '''
         cv2.imshow("Image window", self.img)
+        cv2.imshow("Image window2", self.area(self.img))
         cv2.waitKey(1)
 
     # imu call back sample
@@ -168,8 +168,24 @@ class Qwerty():
 
         ret,thresh = cv2.threshold(gray,0,255,cv2.THRESH_BINARY)
         image, contours, hierarchy = cv2.findContours(thresh,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
+        try:
+            (x,y), radius = cv2.minEnclosingCircle(contours[0])
+            center = (int(x), int(y))
+            radius = int(radius)
+            image = cv2.circle(img,center,radius,(0,255,0),-1)
+            cv2.putText(image,'R='+str(radius)+";x,y"+str(int(x))+","+str(int(y)),(10,50), cv2.FONT_HERSHEY_SIMPLEX, 1,(0,0,0),2,cv2.LINE_AA)
+        except:
+            image = img
+            cv2.putText(image,"OUT",(10,50), cv2.FONT_HERSHEY_SIMPLEX, 1,(0,0,0),2,cv2.LINE_AA)
+        #return cv2.contourArea(contours[0])
+        """
+        protected int getDistance(double x, double y, double x2, double y2){
+         double distance = Math.sqrt((x2 - x) * (x2 - x) + (y2 - y) * (y2 - y));
 
-        return cv2.contourArea(contours[0])
+         return (int) distance;   
+        }
+        """
+        return image
 
     def set_players(self,data):
         if data["players"]["r"] == "you":
@@ -190,6 +206,8 @@ class Qwerty():
         CHANGE = {"Tomato_N": "N_center", "Tomato_S": "W_left", "Omelette_N":	"N_left", "Omelette_S": "E_right",
                 "Pudding_N": "W_right", "Pudding_S": "S_left", "OctopusWiener_N": "E_left", "OctopusWiener_S": "S_right",
                 "FriedShrimp_N": "N_right", "FriedShrimp_E": "E_center", "FriedShrimp_W": "W_center", "FriedShrimp_S": "S_center"}
+
+        #print(data["targets"])
 
         #フィールド点の計算
         for i,j in zip(range(6,18),range(0,12)):
@@ -288,15 +306,22 @@ class Qwerty():
             
     def strategy(self):
         r = rospy.Rate(5) # change speed 1fps
-        
+
         while(1):
             self.check_points.append(self.check_points[0])
             self.setGoal(self.check_points[0])
             self.check_points.pop(0)
+        """
+        while not rospy.is_shutdown():
+            twist = self.calcTwist()
+            print(twist)
+            self.vel_pub.publish(twist)
+
+            r.sleep()
+        """
 
 if __name__ == '__main__':
     rospy.init_node('all_sensor_sample')
-    bot = Qwerty(bot_name='qwerty', use_lidar=False, use_camera=False,
+    bot = Qwerty(bot_name='qwerty', use_lidar=False, use_camera=True,
                  use_imu=False, use_odom=False, use_joint_states=False,use_war_state=True)
     bot.strategy()
-
