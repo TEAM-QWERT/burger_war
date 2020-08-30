@@ -357,7 +357,7 @@ class FightEnemy(smach.State):
         send_data = Twist()
         try:
             trans,rot = self.tf_listener.lookupTransform(my_frame_name, enemy_frame_name, rospy.Time(0))
-            send_data.angular.z =  math.atan2(trans[1],trans[0]) * 1.5
+            send_data.angular.z =  math.atan2(trans[1],trans[0]) * 1
 
             if math.degrees(send_data.angular.z) > 100:
                 send_data.angular.z = math.radians(100)
