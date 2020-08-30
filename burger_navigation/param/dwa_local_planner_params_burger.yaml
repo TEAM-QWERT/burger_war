@@ -11,16 +11,17 @@ DWAPlannerROS:
   max_trans_vel:  0.22
   min_trans_vel:  0.22
 
-  max_rot_vel: 1
-  min_rot_vel: 0.25
+  max_rot_vel: 1.5
+  min_rot_vel: 0.5
+  #min_rot_vel: 0.25
 
   acc_lim_x: 3
   acc_lim_y: 0.0 #
   acc_lim_theta: 2
 
 # Goal Tolerance Parametes
-  xy_goal_tolerance: 0.08
-  yaw_goal_tolerance: 0.3
+  xy_goal_tolerance: 0.03
+  yaw_goal_tolerance: 0.1
   latch_xy_goal_tolerance: true
 
 # Forward Simulation Parameters
