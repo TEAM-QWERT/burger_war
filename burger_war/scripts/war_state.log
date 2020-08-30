@@ -1,0 +1,108 @@
+{
+    "scores": {
+        "r": 13, 
+        "b": 12
+    }, 
+    "players": {
+        "r": "you", 
+        "b": "enemy"
+    }, 
+    "state": "running", 
+    "time": 337.3557839393616, 
+    "ready": {
+        "r": true, 
+        "b": true
+    }, 
+    "targets": [
+        {
+            "player": "n", 
+            "name": "BL_B", 
+            "point": "5"
+        }, 
+        {
+            "player": "r", 
+            "name": "BL_L", 
+            "point": "3"
+        }, 
+        {
+            "player": "n", 
+            "name": "BL_R", 
+            "point": "3"
+        }, 
+        {
+            "player": "b", 
+            "name": "RE_B", 
+            "point": "5"
+        }, 
+        {
+            "player": "b", 
+            "name": "RE_L", 
+            "point": "3"
+        }, 
+        {
+            "player": "b", 
+            "name": "RE_R", 
+            "point": "3"
+        }, 
+        {
+            "player": "n", 
+            "name": "Tomato_N", 
+            "point": "1"
+        }, 
+        {
+            "player": "r", 
+            "name": "Tomato_S", 
+            "point": "1"
+        }, 
+        {
+            "player": "r", 
+            "name": "Omelette_N", 
+            "point": "1"
+        }, 
+        {
+            "player": "r", 
+            "name": "Omelette_S", 
+            "point": "1"
+        }, 
+        {
+            "player": "r", 
+            "name": "Pudding_N", 
+            "point": "1"
+        }, 
+        {
+            "player": "r", 
+            "name": "Pudding_S", 
+            "point": "1"
+        }, 
+        {
+            "player": "r", 
+            "name": "OctopusWiener_N", 
+            "point": "1"
+        }, 
+        {
+            "player": "r", 
+            "name": "OctopusWiener_S", 
+            "point": "1"
+        }, 
+        {
+            "player": "b", 
+            "name": "FriedShrimp_N", 
+            "point": "1"
+        }, 
+        {
+            "player": "r", 
+            "name": "FriedShrimp_E", 
+            "point": "1"
+        }, 
+        {
+            "player": "r", 
+            "name": "FriedShrimp_W", 
+            "point": "1"
+        }, 
+        {
+            "player": "r", 
+            "name": "FriedShrimp_S", 
+            "point": "1"
+        }
+    ]
+}

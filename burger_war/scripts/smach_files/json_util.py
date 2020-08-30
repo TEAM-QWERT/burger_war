@@ -7,7 +7,7 @@ from move_base_msgs.msg import MoveBaseGoal
 
 
 #location_listの読み込み
-file_path = roslib.packages.get_pkg_dir('burger_war') + "/location_list/target_list.json"
+file_path = roslib.packages.get_pkg_dir('burger_war') + "/location_list/location_list.json"
 file = open(file_path, 'r')
 location_list_dict = json.load(file)
 

@@ -48,7 +48,7 @@ class Commander(smach.State):
     def __init__(self):
         smach.State.__init__(self, outcomes=["get_point", "fight_enemy", "search_enemy", "commander", "game_finish"])
         #敵と接敵したと判定する距離[m]
-        self.close_enemy_th = 0.6
+        self.close_enemy_th = 0.9
         #敵を検知できなくなった時に、見失うまでの時間[s]
         self.lost_enemy_time = rospy.Duration(secs=100)
         self.last_notice_time = rospy.Time.now()
@@ -63,20 +63,28 @@ class Commander(smach.State):
         self.pub_twist = rospy.Publisher('cmd_vel', Twist,queue_size=1)
         
     def execute(self, userdata):
+        global g_enemy_xy
+        """
         #敵検知から指定時間立った場合は、敵情報をリセット
         if ((rospy.Time.now() - self.last_notice_time) > self.lost_enemy_time):
+            self.find_enemy = False
             self.enemy_close = False
         
         #各状況に合わせて状態遷移
         #敵が近くにいる場合、fightEnemy状態に遷移
-
-        if self.close_enemy == True:
+        
+        if self.find_enemy == True and self.close_enemy == True:
             return "fight_enemy"
         #敵を発見できているが、近くにはいない場合、getPoint状態に遷移
-        elif self.close_enemy == False:
+        elif self.find_enemy == True and self.close_enemy == False:
             return "get_point"
+        #発見できている敵がいない場合、searchEnemy状態に遷移
+        elif self.find_enemy == False:
+            return "search_enemy"
         else:
             return "commander"
+        """
+        return "get_point"
 
     #LRFから敵を検知し、指定距離に入った場合フラグを立てる
     def enemy_callback_fromLRF(self, msg):
@@ -86,23 +94,18 @@ class Commander(smach.State):
         map_frame_name = "/map"
         enemy_pos = self.tf_listener.lookupTransform(map_frame_name, enemy_frame_name, rospy.Time(0))
         g_enemy_xy = [enemy_pos[0][0], enemy_pos[0][1]]
-        rospy.logerr(["LRF",g_enemy_xy])
         self.last_notice_time = rospy.Time.now()
         self.find_enemy = True
         if msg.data <= self.close_enemy_th:
             self.close_enemy   = True
         elif msg.data > self.close_enemy_th:
             self.close_enemy == False
+        #rospy.logerr(g_enemy_xy)
 
 
     #カメラ画像から敵を検知し、指定距離に入った場合フラグを立てる
     def enemy_callback_fromImage(self, msg):
-        max_enemy_distance = 3.5
         global g_enemy_xy
-        if msg.data > max_enemy_distance:
-            enemy_distance = max_enemy_distance
-        else:
-            enemy_distance = msg.data
         enemy_frame_name = rospy.get_param('~robot_name',"") + '/enemy_closest'
         my_frame_name = rospy.get_param('~robot_name',"") + "/base_footprint"
         map_frame_name = "/map"
@@ -115,10 +118,9 @@ class Commander(smach.State):
         angle_z = float(shita[2]) + math.pi / 2.0 
         #rospy.logerr(["angle_z",angle_z])
         #rospy.logerr(["diatance",msg.data])
-        add_xy = [enemy_distance * math.sin(angle_z),enemy_distance * math.cos(angle_z)]
+        add_xy = [msg.data * math.sin(angle_z),msg.data * math.cos(angle_z)]
         #global g_enemy_pos = [[my_pos[0][0]+msg.data*math.cos(shita), my_pos[0][1]+msg.data*math.sin(shita), 0], [[0]*4]]
         g_enemy_xy = [my_pos[0][0] + add_xy[0], my_pos[0][1] + add_xy[1]]
-        rospy.logerr(["Image",g_enemy_xy])
         #rospy.logerr(["g_enemy_pos",g_enemy_pos])
         self.find_enemy = True
         if msg.data <= self.close_enemy_th:
@@ -188,7 +190,7 @@ class GetPoint(smach.State):
                 elif "E" in temp:
                     direction["E"].append(temp)
 
-            elif data["targets"][i]["player"] == self.en_col:
+            elif data["targets"][i]["playis_point_emnemyer"] == self.en_col:
                 my_field_points[j] = 0
                 en_field_points[j] = 1
 
@@ -219,7 +221,7 @@ class GetPoint(smach.State):
 
     def GetFieldPoint(self, my_xy, en_xy):
         HOUI = ["S", "W", "N", "E"]
-        kyori_with_name = {}
+        iranaikedo = {}
         local_need2getfelds = self.need2get_fields
         kyori = 0.0
         en_field = {}
@@ -229,44 +231,34 @@ class GetPoint(smach.State):
             return "S_center"
         for i in local_need2getfelds:
             kyori = math.sqrt(math.pow(my_xy[0] - self.location_list_dict[i]["translation"]["x"],2) + math.pow(my_xy[1] - self.location_list_dict[i]["translation"]["y"],2))
-            kyori_with_name[i] = kyori
+            iranaikedo[i] = kyori
         for i in HOUI:
             kyori = math.sqrt(math.pow(en_xy[0] - self.location_list_dict[i+"_center"]["translation"]["x"],2) + math.pow(en_xy[1] - self.location_list_dict[i+"_center"]["translation"]["y"],2))
             kyori_my = math.sqrt(math.pow(my_xy[0] - self.location_list_dict[i+"_center"]["translation"]["x"],2) + math.pow(my_xy[1] - self.location_list_dict[i+"_center"]["translation"]["y"],2))
             en_field[i] = kyori
             my_field[i] = kyori_my
+        rospy.logerr(en_xy)
         ikuna = sorted(en_field.items(), key=lambda x:x[1])[0][0]
         ikuna_houi = ikuna[0][0].split("_")[0]#NWSEを取得
         
-        iru = sorted(my_field.items(), key=lambda x:x[1])[0][0]
-        iru_houi = iru[0][0].split("_")[0]#NWSEを取得
-        MUKI = ["_center","_left","_right"]
-        for i in MUKI:
-            kyori_with_name.pop(ikuna_houi+i,None)
-        saitan = sorted(kyori_with_name.items(), key=lambda x:x[1])
-        
-        #rospy.logerr(["ikuna_houi+muki:",ikuna_houi+MUKI[0]])
-        try:
-            saitan_houi = saitan[0][0].split("_")[0]#NWSEを取得
-        except:
-            pass
+        saitan = sorted(iranaikedo.items(), key=lambda x:x[1])
+        saitan_houi = saitan[0][0].split("_")[0]#NWSEを取得
         #rospy.logerr(saitan)
-        #rospy.logerr(sorted(en_field.items(), key=lambda x:x[1]))
+        rospy.logerr(sorted(en_field.items(), key=lambda x:x[1]))
         #rospy.logerr(["TEKI_houi:",ikuna_houi])
         #rospy.logerr(["SAITAN_houi:",saitan_houi])
         #rospy.logerr(["HOUI:",HOUI[HOUI.index(saitan_houi)]])
-        if len(kyori_with_name) == 0:
-            return iru_houi+"_st"
-
-        if saitan_houi == HOUI[HOUI.index(iru) - 2]:
+        if saitan_houi == HOUI[HOUI.index(saitan_houi) - 2]:
             #最短が自分の領域と逆側
             if ikuna_houi == HOUI[HOUI.index(saitan_houi) - 1]:
-                return HOUI[HOUI.index(saitan_houi) - 3] + "_center"#SWNEの中心
+                rospy.logerr("if")
+                return HOUI[HOUI.index(houi) - 3] + "_center"#SWNEの中心
             elif ikuna_houi == HOUI[HOUI.index(saitan_houi) - 3]:
                 return  HOUI[HOUI.index(saitan_houi) - 1] + "_center"#SWNEの中心
+                rospy.logerr("elif")
+        rospy.logerr("else")
         #rospy.logerr(saitan[0][0])
         #return "S_right"
-
         return saitan[0][0]
     
     def calcTwist(self):
@@ -279,7 +271,7 @@ class GetPoint(smach.State):
 
 
     def setGoal(self,location_name):
-        #self.client.wait_for_server()
+        self.client.wait_for_server()
         goal = MoveBaseGoal()
         goal.target_pose.header.frame_id = "/map"
         goal.target_pose.header.stamp = rospy.Time.now()
@@ -293,17 +285,16 @@ class GetPoint(smach.State):
         goal.target_pose.pose.orientation.z = q[2]
         goal.target_pose.pose.orientation.w = q[3]
 
-        #self.client.send_goal(goal)
-        move_base.send_goal_and_wait_result(goal)
-        #wait = self.client.wait_for_result()
-        #hoge = location_name.split("_")[0]
-        #if location_name in self.direction[hoge]:
-        #    move_base.cancel_goal()
-        #if not wait:
-        #    rospy.logerr("Action server not available!")
-        #    rospy.signal_shutdown("Action server not available!")
-        #else:
-        #    return self.client.get_result() 
+        self.client.send_goal(goal)
+        wait = self.client.wait_for_result()
+        hoge = location_name.split("_")[0]
+        if location_name in self.direction[hoge]:
+            move_base.cancel_goal()
+        if not wait:
+            rospy.logerr("Action server not available!")
+            rospy.signal_shutdown("Action server not available!")
+        else:
+            return self.client.get_result() 
     def execute(self, userdata):
         global g_enemy_xy
         overlaytext.publish('STATE: Get filed point')
@@ -330,8 +321,8 @@ class GetPoint(smach.State):
         #set_field = self.GetFieldPoint([-0.63,0],[0.0,0.53])
         set_field = self.GetFieldPoint(self.my_xy,g_enemy_xy)
         #result = move_base.send_goal_and_wait_result(self.setGoal(set_field))
-        #result = move_base.send_goal(self.setGoal(set_field))
-        self.setGoal(set_field)
+        result = move_base.send_goal(self.setGoal(set_field))
+        #self.setGoal(set_field)
         #result = move_base.send_goal_and_wait_result(self.setGoal("N_left"))
         return "finish"
         
@@ -355,21 +346,18 @@ class FightEnemy(smach.State):
         map_frame_name = "/map"
         # Twistのpublish
         send_data = Twist()
-        try:
-            trans,rot = self.tf_listener.lookupTransform(my_frame_name, enemy_frame_name, rospy.Time(0))
-            send_data.angular.z =  math.atan2(trans[1],trans[0]) * 1.5
+        trans,rot = self.tf_listener.lookupTransform(my_frame_name, enemy_frame_name, rospy.Time(0))
+        send_data.angular.z =  math.atan2(trans[1],trans[0]) * 1.5
 
-            if math.degrees(send_data.angular.z) > 100:
-                send_data.angular.z = math.radians(100)
-            elif math.degrees(send_data.angular.z) < -100:
-                send_data.angular.z = math.radians(-100)
+        if math.degrees(send_data.angular.z) > 100:
+            send_data.angular.z = math.radians(100)
+        elif math.degrees(send_data.angular.z) < -100:
+            send_data.angular.z = math.radians(-100)
 
-            self.pub_twist.publish(send_data)
-            rospy.sleep(0.3)
-            send_data.angular.z =  0
-            self.pub_twist.publish(send_data)
-        except:
-            pass
+        self.pub_twist.publish(send_data)
+        rospy.sleep(0.3)
+        send_data.angular.z =  0
+        self.pub_twist.publish(send_data)
         #rospy.sleep(1)
         return "finish"
 

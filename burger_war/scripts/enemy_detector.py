@@ -4,8 +4,11 @@ import sys
 import rospy
 import math
 import tf
+import pathlib
 import roslib.packages
-from ...obstacle_detector.msg import Obstacles
+current_dir = pathlib.Path(__file__).resolve().parent
+sys.path.append(str(current_dir)+'/../../')
+from obstacle_detector.msg import Obstacles
 from std_msgs.msg          import Float32
 
 class EnemyDetector:
@@ -64,8 +67,8 @@ class EnemyDetector:
 
     def is_point_emnemy(self, point_x, point_y):
         #フィールド内の物体でない、敵と判定する閾値（半径）
-        thresh_corner = 0.20
-        thresh_center = 0.32
+        thresh_corner = 0.180
+        thresh_center = 0.280
 
         #フィールド内かチェック
         if   point_y > (-point_x + 1.55):
