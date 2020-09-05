@@ -81,7 +81,6 @@ class Commander(smach.State):
             
         #各状況に合わせて状態遷移
         if (rospy.Time.now() - self.last_flag_reset_time) < self.flag_reset_wait:
-            overlaytext.publish('STATE: Commander')
             return "commander"
          #敵が近くにいる場合、fightEnemy状態に遷移
         if self.close_enemy == True:
