@@ -29,6 +29,7 @@ def send_goal_and_wait_result(goal):
         ac_move_base_client.wait_for_server()
         ac_move_base_client.send_goal(goal)
         result = ac_move_base_client.wait_for_result(rospy.Duration(1))
+        #result = ac_move_base_client.wait_for_result(rospy.Duration(1,500000000))
         return result
 
 def send_goal(goal):

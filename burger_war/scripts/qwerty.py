@@ -35,7 +35,7 @@ from sensor_msgs.msg import JointState
 from nav_msgs.msg import Odometry
 from std_msgs.msg import String
 from cv_bridge import CvBridge, CvBridgeError
-from std_msgs.msg import Float32
+from std_msgs.msg import Float32, Int16
 
 import pathlib
 current_dir = pathlib.Path(__file__).resolve().parent
@@ -43,33 +43,46 @@ sys.path.append(str(current_dir))
 from smach_files import *
  
 g_enemy_xy = [0,0]
+find_enemy = False
 
 class Commander(smach.State):
     def __init__(self):
         smach.State.__init__(self, outcomes=["get_point", "fight_enemy", "search_enemy", "commander", "game_finish"])
         #敵と接敵したと判定する距離[m]
-        self.close_enemy_th = 0.6
+        self.close_enemy_th = 0.8
         #敵を検知できなくなった時に、見失うまでの時間[s]
-        self.lost_enemy_time = rospy.Duration(secs=100)
+        self.lost_enemy_time = rospy.Duration(secs=5)
+        self.flag_reset_wait = rospy.Duration(secs=1)
         self.last_notice_time = rospy.Time.now()
+        self.last_flag_reset_time = rospy.Time.now()
         self.close_enemy  = False
-        self.find_enemy = False
         self.tf_listener = tf.TransformListener()
         self.sub_enemy_fromLRF   = rospy.Subscriber('robot2enemy', Float32, self.enemy_callback_fromLRF)
         self.sub_enemy_fromImage = rospy.Subscriber('en_distance_fromImage', Float32, self.enemy_callback_fromImage)
+        self.sub_teki_find = rospy.Subscriber('en_find_fromImage', Int16, self.enemy_find_callback_fromImage)
         self.enemy_frame_name = rospy.get_param('~robot_name',"") + '/enemy_closest'
         self.my_frame_name = rospy.get_param('~robot_name',"") + "/base_footprint"
         self.map_frame_name = "/map"
         self.pub_twist = rospy.Publisher('cmd_vel', Twist,queue_size=1)
-        
-    def execute(self, userdata):
-        #敵検知から指定時間立った場合は、敵情報をリセット
-        if ((rospy.Time.now() - self.last_notice_time) > self.lost_enemy_time):
-            self.enemy_close = False
-        
-        #各状況に合わせて状態遷移
-        #敵が近くにいる場合、fightEnemy状態に遷移
 
+    def execute(self, userdata):
+        global g_enemy_xy
+        global find_enemy
+        text = "Enemy Position:"+str(format(g_enemy_xy[0], ".3f"))+", "+str(format(g_enemy_xy[1], ".3f"))
+        overlaytext.publish2(text)
+        text = "find_enemy="+str(find_enemy)+", close_enemy="+str(self.close_enemy)
+        overlaytext.publish5(text)
+        #敵検知から指定時間立った場合は、敵情報をリセット
+
+        if ((rospy.Time.now() - self.last_notice_time) > self.lost_enemy_time and (find_enemy == True or self.close_enemy == True)):
+            find_enemy = False
+            self.close_enemy = False
+            self.last_flag_reset_time = rospy.Time.now()
+            
+        #各状況に合わせて状態遷移
+        if (rospy.Time.now() - self.last_flag_reset_time) < self.flag_reset_wait:
+            return "commander"
+         #敵が近くにいる場合、fightEnemy状態に遷移
         if self.close_enemy == True:
             return "fight_enemy"
         #敵を発見できているが、近くにはいない場合、getPoint状態に遷移
@@ -86,19 +99,22 @@ class Commander(smach.State):
         map_frame_name = "/map"
         enemy_pos = self.tf_listener.lookupTransform(map_frame_name, enemy_frame_name, rospy.Time(0))
         g_enemy_xy = [enemy_pos[0][0], enemy_pos[0][1]]
-        rospy.logerr(["LRF",g_enemy_xy])
-        self.last_notice_time = rospy.Time.now()
-        self.find_enemy = True
+        text = "Enemy LRF:"+str(format(g_enemy_xy[0], ".3f"))+", "+str(format(g_enemy_xy[1], ".3f"))+ " dis: "+ str(format(msg.data, ".3f"))
+        overlaytext.publish4(text)
+        #rospy.logerr(["LRF",g_enemy_xy])
+        #self.last_notice_time = rospy.Time.now()
+        rospy.logerr(["LRF",msg.data])
         if msg.data <= self.close_enemy_th:
             self.close_enemy   = True
         elif msg.data > self.close_enemy_th:
-            self.close_enemy == False
+            self.close_enemy   = False
 
 
     #カメラ画像から敵を検知し、指定距離に入った場合フラグを立てる
     def enemy_callback_fromImage(self, msg):
         max_enemy_distance = 3.5
         global g_enemy_xy
+        global find_enemy
         if msg.data > max_enemy_distance:
             enemy_distance = max_enemy_distance
         else:
@@ -113,19 +129,23 @@ class Commander(smach.State):
         self.last_notice_time = rospy.Time.now()
         shita = tf.transformations.euler_from_quaternion((my_pos[1][0], my_pos[1][1], my_pos[1][2], my_pos[1][3]))
         angle_z = float(shita[2]) + math.pi / 2.0 
-        #rospy.logerr(["angle_z",angle_z])
-        #rospy.logerr(["diatance",msg.data])
         add_xy = [enemy_distance * math.sin(angle_z),enemy_distance * math.cos(angle_z)]
-        #global g_enemy_pos = [[my_pos[0][0]+msg.data*math.cos(shita), my_pos[0][1]+msg.data*math.sin(shita), 0], [[0]*4]]
         g_enemy_xy = [my_pos[0][0] + add_xy[0], my_pos[0][1] + add_xy[1]]
-        rospy.logerr(["Image",g_enemy_xy])
-        #rospy.logerr(["g_enemy_pos",g_enemy_pos])
-        self.find_enemy = True
+
+        text = "Enemy img:"+str(format(g_enemy_xy[0], ".3f"))+", "+str(format(g_enemy_xy[1], ".3f"))
+        overlaytext.publish3(text)
+        
         if msg.data <= self.close_enemy_th:
             self.close_enemy   = True
+            find_enemy = True
         elif msg.data > self.close_enemy_th:
-            self.close_enemy == False  
+            self.close_enemy   = False  
 
+    def enemy_find_callback_fromImage(self, msg):
+        global find_enemy
+        rospy.logerr("enemy_find_callback_fromImg")
+        find_enemy = True
+        self.last_notice_time = rospy.Time.now()
 
 class GetPoint(smach.State):
     def __init__(self):
@@ -160,11 +180,6 @@ class GetPoint(smach.State):
             self.en_col = "r"
         self.war_state_sub = rospy.Subscriber('war_state', String, self.callback_war_state)
         self.pub_twist = rospy.Publisher('cmd_vel', Twist,queue_size=1)
-
-        self.check_points     = ["S_center", "E_left", "S_right", "S_left", 
-                                "W_right", "W_center", "W_left", 
-                                "N_right", "N_center", "N_left", 
-                                "E_right", "E_center", "E_left"]
 
     def calc_war_state(self, data, my_col, en_col):
         my_field_points = np.zeros(12) #自分の取得フィールド点
@@ -226,15 +241,16 @@ class GetPoint(smach.State):
         my_field = {}
         
         if local_need2getfelds == []:
+            overlaytext.publish8("local_need2getfelds == []:"+"S_center")
             return "S_center"
         for i in local_need2getfelds:
             kyori = math.sqrt(math.pow(my_xy[0] - self.location_list_dict[i]["translation"]["x"],2) + math.pow(my_xy[1] - self.location_list_dict[i]["translation"]["y"],2))
-            kyori_with_name[i] = kyori
+            kyori_with_name[i] = format(kyori,".4f")
         for i in HOUI:
             kyori = math.sqrt(math.pow(en_xy[0] - self.location_list_dict[i+"_center"]["translation"]["x"],2) + math.pow(en_xy[1] - self.location_list_dict[i+"_center"]["translation"]["y"],2))
             kyori_my = math.sqrt(math.pow(my_xy[0] - self.location_list_dict[i+"_center"]["translation"]["x"],2) + math.pow(my_xy[1] - self.location_list_dict[i+"_center"]["translation"]["y"],2))
-            en_field[i] = kyori
-            my_field[i] = kyori_my
+            en_field[i] = format(kyori,".4f")
+            my_field[i] = format(kyori_my,".4f")
         ikuna = sorted(en_field.items(), key=lambda x:x[1])[0][0]
         ikuna_houi = ikuna[0][0].split("_")[0]#NWSEを取得
         
@@ -245,28 +261,26 @@ class GetPoint(smach.State):
             kyori_with_name.pop(ikuna_houi+i,None)
         saitan = sorted(kyori_with_name.items(), key=lambda x:x[1])
         
-        #rospy.logerr(["ikuna_houi+muki:",ikuna_houi+MUKI[0]])
         try:
             saitan_houi = saitan[0][0].split("_")[0]#NWSEを取得
         except:
             pass
-        #rospy.logerr(saitan)
-        #rospy.logerr(sorted(en_field.items(), key=lambda x:x[1]))
-        #rospy.logerr(["TEKI_houi:",ikuna_houi])
-        #rospy.logerr(["SAITAN_houi:",saitan_houi])
-        #rospy.logerr(["HOUI:",HOUI[HOUI.index(saitan_houi)]])
+
         if len(kyori_with_name) == 0:
+            overlaytext.publish8("len(kyori_with_name)==0:"+iru_houi+"_st")
             return iru_houi+"_st"
+
+        overlaytext.publish6(str(saitan))
 
         if saitan_houi == HOUI[HOUI.index(iru) - 2]:
             #最短が自分の領域と逆側
             if ikuna_houi == HOUI[HOUI.index(saitan_houi) - 1]:
-                return HOUI[HOUI.index(saitan_houi) - 3] + "_center"#SWNEの中心
+                overlaytext.publish8("OP Side1:"+HOUI[HOUI.index(saitan_houi) - 3] + "_hantei")
+                return HOUI[HOUI.index(saitan_houi) - 3] + "_hantei"#SWNEの中心
             elif ikuna_houi == HOUI[HOUI.index(saitan_houi) - 3]:
-                return  HOUI[HOUI.index(saitan_houi) - 1] + "_center"#SWNEの中心
-        #rospy.logerr(saitan[0][0])
-        #return "S_right"
-
+                overlaytext.publish8("OP Side2:"+HOUI[HOUI.index(saitan_houi) - 1] + "_hantei")
+                return  HOUI[HOUI.index(saitan_houi) - 1] + "_hantei"#SWNEの中心
+        overlaytext.publish8("Last :"+saitan[0][0])
         return saitan[0][0]
     
     def calcTwist(self):
@@ -345,16 +359,17 @@ class FightEnemy(smach.State):
         #self.my_frame_name = rospy.get_param('~robot_name',"") + "/base_footprint"
         #self.map_frame_name = "/map"
         self.tf_listener = tf.TransformListener()
-
+        self.pub_balus = rospy.Publisher("balus", Int16,queue_size=1)
+        self.count2balus = 0
     def execute(self, userdata):
         overlaytext.publish('STATE: Fight enemy')
-
         move_base.cancel_goal()
         enemy_frame_name = rospy.get_param('~robot_name',"") + '/enemy_closest'
         my_frame_name = rospy.get_param('~robot_name',"") + "/base_footprint"
         map_frame_name = "/map"
         # Twistのpublish
         send_data = Twist()
+        global find_enemy
         try:
             trans,rot = self.tf_listener.lookupTransform(my_frame_name, enemy_frame_name, rospy.Time(0))
             send_data.angular.z =  math.atan2(trans[1],trans[0]) * 1
@@ -368,6 +383,13 @@ class FightEnemy(smach.State):
             rospy.sleep(0.3)
             send_data.angular.z =  0
             self.pub_twist.publish(send_data)
+            overlaytext.publish7("degree2enemy:"+str(math.degrees(math.atan2(trans[1],trans[0]))))
+            if abs(math.degrees(math.atan2(trans[1],trans[0]))) < 10 and find_enemy == False:
+                self.count2balus = self.count2balus + 1
+            #    if self.count2balus > 1:
+                self.pub_balus.publish(1)
+            #else:
+            #    self.count2balus = 0
         except:
             pass
         #rospy.sleep(1)

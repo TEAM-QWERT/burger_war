@@ -9,7 +9,8 @@ import roslib.packages
 current_dir = pathlib.Path(__file__).resolve().parent
 sys.path.append(str(current_dir)+'/../../')
 from obstacle_detector.msg import Obstacles
-from std_msgs.msg          import Float32
+from std_msgs.msg          import Float32, Int16
+ignore_pos = []
 
 class EnemyDetector:
     def __init__(self):
@@ -19,13 +20,19 @@ class EnemyDetector:
         self.sub_obstacles   = rospy.Subscriber('obstacles', Obstacles, self.obstacles_callback)
         self.pub_robot2enemy = rospy.Publisher('robot2enemy', Float32, queue_size=10)
         self.robot_name      = rospy.get_param('~robot_name', '')
+        self.sub_balus_com   = rospy.Subscriber('balus',Int16, self.balus_callback) 
+        self.enemy_frame_name= rospy.get_param('~robot_name',"") + '/enemy_closest'
+        self.map_frame_name  = "/map"
+        #self.ignore_pos      = []
+        #無視するエリアの拡張幅[m]
+        self.ignore_enh      = 0.1 
 
     def obstacles_callback(self, msg):
-
+        global ignore_pos
         closest_enemy_len = sys.float_info.max
         closest_enemy_x   = 0
         closest_enemy_y   = 0
-
+        rospy.logerr(["balus list;",ignore_pos])
         for num in range(len(msg.circles)):
 
             temp_x = msg.circles[num].center.x
@@ -65,19 +72,32 @@ class EnemyDetector:
             #ロボットから敵までの距離をpublish
             self.pub_robot2enemy.publish(closest_enemy_len)
 
+    def balus_callback(self, msg):
+        global ignore_pos
+        try:
+            enemy_pos = self.tf_listener.lookupTransform(self.map_frame_name, self.enemy_frame_name, rospy.Time(0))
+            enemy_xy = [enemy_pos[0][0], enemy_pos[0][1]]
+            for ignore_pos_xy in ignore_pos:
+                if (math.sqrt(pow(enemy_xy[0]-ignore_pos_xy[0],2))+math.sqrt(pow(enemy_xy[1]-ignore_pos_xy[1],2))) < 0.1:
+                    return 0
+            ignore_pos.append(enemy_xy)
+        except:
+            pass
+
     def is_point_emnemy(self, point_x, point_y):
+        global ignore_pos
         #フィールド内の物体でない、敵と判定する閾値（半径）
-        thresh_corner = 0.220
-        thresh_center = 0.320
+        thresh_corner = 0.130
+        thresh_center = 0.250
 
         #フィールド内かチェック
-        if   point_y > (-point_x + 1.4):
+        if   point_y > (-point_x + 1.6):
             return False
-        elif point_y < (-point_x - 1.4):
+        elif point_y < (-point_x - 1.6):
             return False
-        elif point_y > ( point_x + 1.4):
+        elif point_y > ( point_x + 1.6):
             return False
-        elif point_y < ( point_x - 1.4):
+        elif point_y < ( point_x - 1.6):
             return False
 
         #フィールド内の物体でないかチェック
@@ -86,6 +106,14 @@ class EnemyDetector:
         len_p3 = math.sqrt(pow((point_x + 0.53), 2) + pow((point_y - 0.53), 2))
         len_p4 = math.sqrt(pow((point_x + 0.53), 2) + pow((point_y + 0.53), 2))
         len_p5 = math.sqrt(pow(point_x         , 2) + pow(point_y         , 2))
+
+        try:
+            for ignore_pos_xy in ignore_pos:
+                dis = math.sqrt(pow((point_x - ignore_pos_xy[0]), 2) + pow((point_y - ignore_pos_xy[1]), 2))
+                if dis < self.ignore_enh:
+                    return False
+        except:
+            pass
 
         if len_p1 < thresh_corner or len_p2 < thresh_corner or len_p3 < thresh_corner or len_p4 < thresh_corner or len_p5 < thresh_center:
             return False
