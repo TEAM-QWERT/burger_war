@@ -32,7 +32,7 @@ class EnemyDetector:
         closest_enemy_len = sys.float_info.max
         closest_enemy_x   = 0
         closest_enemy_y   = 0
-        rospy.logerr(["balus list;",ignore_pos])
+        #rospy.logerr(["balus list;",ignore_pos])
         for num in range(len(msg.circles)):
 
             temp_x = msg.circles[num].center.x

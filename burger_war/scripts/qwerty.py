@@ -51,7 +51,7 @@ class Commander(smach.State):
         #敵と接敵したと判定する距離[m]
         self.close_enemy_th = 0.8
         #敵を検知できなくなった時に、見失うまでの時間[s]
-        self.lost_enemy_time = rospy.Duration(secs=5)
+        self.lost_enemy_time = rospy.Duration(nsecs=500000000)
         self.flag_reset_wait = rospy.Duration(secs=1)
         self.last_notice_time = rospy.Time.now()
         self.last_flag_reset_time = rospy.Time.now()
@@ -74,13 +74,14 @@ class Commander(smach.State):
         overlaytext.publish5(text)
         #敵検知から指定時間立った場合は、敵情報をリセット
 
-        if ((rospy.Time.now() - self.last_notice_time) > self.lost_enemy_time and (find_enemy == True or self.close_enemy == True)):
+        if ((rospy.Time.now() - self.last_notice_time) > self.lost_enemy_time) and (find_enemy == True and self.close_enemy == True):
             find_enemy = False
             self.close_enemy = False
             self.last_flag_reset_time = rospy.Time.now()
             
         #各状況に合わせて状態遷移
         if (rospy.Time.now() - self.last_flag_reset_time) < self.flag_reset_wait:
+            overlaytext.publish('STATE: Commander')
             return "commander"
          #敵が近くにいる場合、fightEnemy状態に遷移
         if self.close_enemy == True:
@@ -143,7 +144,6 @@ class Commander(smach.State):
 
     def enemy_find_callback_fromImage(self, msg):
         global find_enemy
-        rospy.logerr("enemy_find_callback_fromImg")
         find_enemy = True
         self.last_notice_time = rospy.Time.now()
 
@@ -231,6 +231,7 @@ class GetPoint(smach.State):
             self.my_score, self.en_score, self.my_field_points, self.en_field_points, self.direction = self.calc_war_state(war_state_dic,my_col=self.my_col, en_col=self.en_col)
             self.need2get_fields = self.scan_field(self.my_field_points)
             self.en_fields = self.scan_field(self.en_field_points)
+            overlaytext.publish9("my : en =" + str(self.my_score)+ " : " + str(self.en_score))
 
     def GetFieldPoint(self, my_xy, en_xy):
         HOUI = ["S", "W", "N", "E"]
