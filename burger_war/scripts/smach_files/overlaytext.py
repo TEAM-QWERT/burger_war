@@ -11,6 +11,8 @@ pub_overlay_text5 = rospy.Publisher("overlaytext5", OverlayText, queue_size=1, l
 pub_overlay_text6 = rospy.Publisher("overlaytext6", OverlayText, queue_size=1, latch=True)
 pub_overlay_text7 = rospy.Publisher("overlaytext7", OverlayText, queue_size=1, latch=True)
 pub_overlay_text8 = rospy.Publisher("overlaytext8", OverlayText, queue_size=1, latch=True)
+pub_overlay_text9 = rospy.Publisher("overlaytext9", OverlayText, queue_size=1, latch=True)
+pub_overlay_text10 = rospy.Publisher("overlaytext10", OverlayText, queue_size=1, latch=True)
 
 def publish(text):
     send_data = OverlayText()
@@ -51,3 +53,14 @@ def publish8(text):
     send_data = OverlayText()
     send_data.text = text
     pub_overlay_text8.publish(send_data)
+#ignore_posの表示
+def publish9(text):
+    send_data = OverlayText()
+    send_data.text = text
+    pub_overlay_text9.publish(send_data)
+
+#my_point en_pointの表示
+def publish10(text):
+    send_data = OverlayText()
+    send_data.text = text
+    pub_overlay_text10.publish(send_data)
